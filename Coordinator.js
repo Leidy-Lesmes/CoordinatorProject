@@ -21,18 +21,33 @@ const io = require('socket.io')(server, {
 // Configuración del socket para comunicarse con el servidor Flask
 const flaskSocket = socketIoClient.connect('http://localhost:5001');
 
-// Eventos importantes en el nodo coordinador
+
+// Mapa para guardar la relación entre nodo y socket ID
+const nodeSocketMap = new Map();
+
+// Evento de conexión
 io.on('connection', (socket) => {
-    console.log(`[${getCurrentTime()}] Nuevo cliente conectado desde: ${socket.handshake.headers.origin}`);
-    flaskSocket.emit('log_message', `[${getCurrentTime()}] Nuevo cliente conectado desde: ${socket.handshake.headers.origin}`);
+    const origin = socket.handshake.headers.origin;
+    
+    console.log(`[${getCurrentTime()}] Nuevo cliente conectado desde: ${origin}`);
+
+    // Guarda el socket en el mapa de nodos
+    nodeSocketMap.set(origin, socket.id);
+
+    // Envía el mensaje al nodo específico
+    socket.emit('log_message', `[${getCurrentTime()}] Conexión exitosa de ${origin} al server ws.`);
 
     socket.on('disconnect', () => {
-        console.log(`[${getCurrentTime()}] Cliente desconectado desde: ${socket.handshake.headers.origin}`);
-        flaskSocket.emit('log_message', `[${getCurrentTime()}] Cliente desconectado desde: ${socket.handshake.headers.origin}`);
+        console.log(`[${getCurrentTime()}] Cliente ${origin} desconectado.`);
+        flaskSocket.emit('log_message', `[${getCurrentTime()}] Cliente ${origin} desconectado.`);
+        
+        // Elimina el nodo del mapa
+        nodeSocketMap.delete(origin);
     });
 });
 
-const nodes = ['http://localhost:5001'];
+
+const nodes = ['http://localhost:5001', 'http://localhost:5002'];
 
 function pingNode(nodeUrl) {
     const socket = socketIoClient.connect(nodeUrl);
@@ -48,10 +63,13 @@ function pingNode(nodeUrl) {
     });
 }
 
+
+// Función para obtener la hora actual
 function getCurrentTime() {
     const now = new Date();
     return now.toLocaleString();
 }
+
 
 nodes.forEach((nodeUrl) => {
     pingNode(nodeUrl);
@@ -90,8 +108,7 @@ function calculateDifference(currentTime, receivedTime) {
 }
 
 
-
-
+// Escuchar en el puerto definido por el entorno o por defecto a 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Servidor de WebSocket escuchando en el puerto ${PORT}`);
