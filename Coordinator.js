@@ -19,7 +19,6 @@ const io = require('socket.io')(server, {
 });
 
 
-
 // Contador para realizar un seguimiento del número de diferencias de tiempo recibidas desde los nodos
 let receivedTimeDifferenceCount = 0;
 
@@ -31,12 +30,12 @@ const timeDifferences = [];
 const nodeSocketMap = new Map();
 
 const flaskSockets = [
-    socketIoClient.connect('http://localhost:5001'),
-    socketIoClient.connect('http://localhost:5002'),
-    socketIoClient.connect('http://localhost:5003')
+    socketIoClient.connect('http://192.168.1.15:5001'),
+    socketIoClient.connect('http://192.168.1.15:5002'),
+    socketIoClient.connect('http://192.168.1.15:5003')
 ];
 
-const nodes = ['http://localhost:5001', 'http://localhost:5002', 'http://localhost:5003'];
+const nodes = ['http://192.168.1.15:5001', 'http://192.168.1.15:5002', 'http://192.168.1.15:5003'];
 
 function getCurrentTime() {
     return new Date().toLocaleTimeString(); 
@@ -64,11 +63,21 @@ function pingNode(nodeUrl) {
 
     socket.on('connect', () => {
         console.log(`[${getCurrentTime()}] Ping a ${nodeUrl}: Conectado`);
+        // Emitir el estado de conexión al frontend (servidor Vue.js)
+        io.emit('node_status', {
+            timestamp: getCurrentTime(), 
+            ip: nodeUrl,
+            isActive: true,
+        });
     });
 
     socket.on('connect_error', (error) => {
         console.log(`[${getCurrentTime()}] Ping a ${nodeUrl}: Error de conexión - ${error.message}`);
-        const flaskSocket = socketIoClient.connect(nodeUrl);
+        io.emit('node_status', {
+            timestamp: getCurrentTime(),
+            ip: nodeUrl,
+            isActive: false,
+        });
     });
 }
 
@@ -76,7 +85,7 @@ nodes.forEach((nodeUrl) => {
     pingNode(nodeUrl);
     setInterval(() => {
         pingNode(nodeUrl);
-    }, 3000);
+    }, 5000);
 });
 
 // implementación berkeley
@@ -130,7 +139,6 @@ flaskSockets.forEach((flaskSocket, index) => {
     });
 });
 
-
 // Función para calcular el promedio de las diferencias de tiempo
 function calculateAverageTimeDifference() {
     // Verificar si hay diferencias de tiempo en la lista
@@ -171,14 +179,14 @@ function calculateNodeTimeDifferences(averageDifference) {
     nodeTimeDifferences.forEach((nodeDifference) => {
         const nodeUrl = nodeDifference.node_url;
         const difference = nodeDifference.difference;
-        // Enviar la diferencia de tiempo al nodo correspondiente
-        const nodeSocket = flaskSockets.find((socket) => socket.io.uri === nodeUrl);
-        if (nodeSocket) {
+        // Buscar el socket del nodo en la lista de sockets de Flask
+        const flaskSocket = flaskSockets.find((socket) => socket.io.uri === nodeUrl);
+        if (flaskSocket) {
             // Enviar la diferencia de tiempo calculada respecto al promedio
-            nodeSocket.emit('node_time_difference', { difference: difference });
-            console.log(`Diferencia de tiempo enviada al nodo ${nodeUrl}: ${difference}`);
+            flaskSocket.emit('node_time_difference', { difference: difference });
+            console.log('Diferencia de tiempo enviada al nodo ${nodeUrl}: ${difference}');
         } else {
-            console.log(`No se encontró el socket para el nodo ${nodeUrl}.`);
+            console.log('No se encontró el socket para el nodo ${nodeUrl}.');
         }
     });
 }
@@ -200,14 +208,12 @@ function updateCoordinatorTime(averageDifference) {
     calculateNodeTimeDifferences(averageDifference);
 }
 
-
 app.post('/start-berkeley', (req, res) => {
     sendSystemTimeToNodes();
     res.send('Algoritmo de Berkeley iniciado correctamente.');
 });
 
 
-// Escuchar en el puerto definido por el entorno o por defecto a 3000
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`Servidor de WebSocket escuchando en el puerto ${PORT}`);
