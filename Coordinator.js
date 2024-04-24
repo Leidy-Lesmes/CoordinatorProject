@@ -24,6 +24,9 @@ const flaskSockets = [
     socketIoClient.connect('http://localhost:5003')
 ];
 
+// Contador para realizar un seguimiento del número de diferencias de tiempo recibidas desde los nodos
+let receivedTimeDifferenceCount = 0;
+
 
 // Lista para almacenar las diferencias de tiempo recibidas del nodo Flask
 const timeDifferences = [];
@@ -104,22 +107,36 @@ function sendSystemTimeToNodes() {
 }
 
 // Escuchar la diferencia de tiempo enviada desde los nodos Flask
+
+// Escuchar la diferencia de tiempo enviada desde los nodos Flask
 flaskSockets.forEach((flaskSocket, index) => {
     flaskSocket.on('time_difference', (data) => {
         const differenceSeconds = data.difference;
         const nodeUrl = data.node_url; // Obtener la URL del nodo Flask
         console.log(`Diferencia de tiempo recibida desde Flask ${index + 1} (${nodeUrl}): ${differenceSeconds} segundos`);
+        
         // Almacenar la diferencia de tiempo y la URL del nodo Flask en la lista
         timeDifferences.push({ difference: differenceSeconds, node_url: nodeUrl });
         console.log('Lista de diferencias de tiempo:', timeDifferences);
-        // Calcular el promedio de las diferencias de tiempo
-        const averageDifference = calculateAverageTimeDifference();
-        // Actualizar la hora actual del coordinador con el promedio de las diferencias de tiempo
-        updateCoordinatorTime(averageDifference);
-        // Calcular la diferencia de tiempo de cada nodo respecto al promedio
-        calculateNodeTimeDifferences(averageDifference);
+        
+        // Incrementar el contador de diferencias de tiempo recibidas
+        receivedTimeDifferenceCount++;
+
+        // Verificar si se han recibido todas las diferencias de tiempo esperadas
+        if (receivedTimeDifferenceCount === flaskSockets.length) {
+            // Calcular el promedio de las diferencias de tiempo
+            const averageDifference = calculateAverageTimeDifference();
+            // Actualizar la hora actual del coordinador con el promedio de las diferencias de tiempo
+            updateCoordinatorTime(averageDifference);
+            // Calcular la diferencia de tiempo de cada nodo respecto al promedio
+            calculateNodeTimeDifferences(averageDifference);
+
+            // Reiniciar el contador de diferencias de tiempo recibidas
+            receivedTimeDifferenceCount = 0;
+        }
     });
 });
+
 
 // Función para calcular el promedio de las diferencias de tiempo
 function calculateAverageTimeDifference() {
@@ -148,27 +165,23 @@ function calculateNodeTimeDifferences(averageDifference) {
         console.log('No hay diferencias de tiempo para calcular las diferencias de nodos.');
         return;
     }
-
     // Crear una lista para almacenar las diferencias de cada nodo respecto al promedio
     const nodeTimeDifferences = [];
-
     // Iterar sobre cada diferencia de tiempo y calcular la diferencia respecto al promedio
     timeDifferences.forEach((difference) => {
         const nodeDifference = averageDifference - difference.difference;
         const nodeUrl = difference.node_url;
         nodeTimeDifferences.push({ difference: nodeDifference, node_url: nodeUrl });
     });
-
     console.log('Diferencias de tiempo de cada nodo respecto al promedio:', nodeTimeDifferences);
-
     // Emitir las diferencias de tiempo de cada nodo respecto al promedio a los nodos correspondientes
     nodeTimeDifferences.forEach((nodeDifference) => {
         const nodeUrl = nodeDifference.node_url;
         const difference = nodeDifference.difference;
-
         // Enviar la diferencia de tiempo al nodo correspondiente
         const nodeSocket = flaskSockets.find((socket) => socket.io.uri === nodeUrl);
         if (nodeSocket) {
+            // Enviar la diferencia de tiempo calculada respecto al promedio
             nodeSocket.emit('node_time_difference', { difference: difference });
             console.log(`Diferencia de tiempo enviada al nodo ${nodeUrl}: ${difference}`);
         } else {
@@ -192,24 +205,6 @@ function updateCoordinatorTime(averageDifference) {
     console.log('Hora actualizada del coordinador:', currentCoordinatorTime.toLocaleString());
     // Calcular la diferencia de tiempo de cada nodo respecto al promedio
     calculateNodeTimeDifferences(averageDifference);
-}
-
-// Función para calcular la diferencia de tiempo de cada nodo respecto al promedio y registrarla en una lista
-function calculateNodeTimeDifferences(averageDifference) {
-    // Verificar si hay diferencias de tiempo en la lista
-    if (timeDifferences.length === 0) {
-        console.log('No hay diferencias de tiempo para calcular las diferencias de nodos.');
-        return;
-    }
-    // Crear una lista para almacenar las diferencias de cada nodo respecto al promedio
-    const nodeTimeDifferences = [];
-    // Iterar sobre cada diferencia de tiempo y calcular la diferencia respecto al promedio
-    timeDifferences.forEach((difference) => {
-        const nodeDifference = averageDifference - difference.difference;
-        const nodeUrl = difference.node_url;
-        nodeTimeDifferences.push({ difference: nodeDifference, node_url: nodeUrl });
-    });
-    console.log('Diferencias de tiempo de cada nodo respecto al promedio:', nodeTimeDifferences);
 }
 
 
