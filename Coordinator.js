@@ -34,59 +34,54 @@ const timeDifferences = [];
 // Mapa para guardar la relación entre nodo y socket ID
 const nodeSocketMap = new Map();
 
-// Evento de conexión
+const flaskSockets = [
+    socketIoClient.connect('http://localhost:5001'),
+    socketIoClient.connect('http://localhost:5002'),
+    socketIoClient.connect('http://localhost:5003')
+];
+
+function getCurrentTime() {
+    return new Date().toLocaleTimeString(); 
+}
+
 io.on('connection', (socket) => {
     const origin = socket.handshake.headers.origin;
-    
+
     console.log(`[${getCurrentTime()}] Nuevo cliente conectado desde: ${origin}`);
 
-    // Guarda el socket en el mapa de nodos
     nodeSocketMap.set(origin, socket.id);
-
-    // Envía el mensaje al nodo específico
     socket.emit('log_message', `[${getCurrentTime()}] Conexión exitosa de ${origin} al server ws.`);
 
     socket.on('disconnect', () => {
         console.log(`[${getCurrentTime()}] Cliente ${origin} desconectado.`);
-        flaskSocket1.emit('log_message', `[${getCurrentTime()}] Cliente ${origin} desconectado.`);
-        
-        // Elimina el nodo del mapa
+
+        socket.emit('log_message', `[${getCurrentTime()}] Cliente ${origin} desconectado.`);
+
         nodeSocketMap.delete(origin);
     });
 });
-
-
-const nodes = ['http://localhost:5001', 'http://localhost:5002', 'http://localhost:5003'];
 
 function pingNode(nodeUrl) {
     const socket = socketIoClient.connect(nodeUrl);
 
     socket.on('connect', () => {
         console.log(`[${getCurrentTime()}] Ping a ${nodeUrl}: Conectado`);
-        socket.emit('log_message', `[${getCurrentTime()}] Ping a ${nodeUrl}: Conectado`);
     });
 
     socket.on('connect_error', (error) => {
         console.log(`[${getCurrentTime()}] Ping a ${nodeUrl}: Error de conexión - ${error.message}`);
-        socket.emit('log_message', `[${getCurrentTime()}] Ping a ${nodeUrl}: Error de conexión - ${error.message}`);
+        const flaskSocket = socketIoClient.connect(nodeUrl);
     });
 }
-
 
 nodes.forEach((nodeUrl) => {
     pingNode(nodeUrl);
     setInterval(() => {
         pingNode(nodeUrl);
-    }, 20000); // 5000 milisegundos = 5 segundos
+    }, 3000);
 });
 
 // implementación berkeley
-
-// Función para obtener la hora actual del sistema en formato adecuado
-function getCurrentTime() {
-    const now = new Date();
-    return now.toLocaleString();
-}
 
 function getCurrentTimeHour() {
     const now = new Date();
@@ -212,7 +207,6 @@ app.post('/start-berkeley', (req, res) => {
     sendSystemTimeToNodes();
     res.send('Algoritmo de Berkeley iniciado correctamente.');
 });
-
 
 
 // Escuchar en el puerto definido por el entorno o por defecto a 3000
