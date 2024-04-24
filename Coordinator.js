@@ -18,11 +18,7 @@ const io = require('socket.io')(server, {
     }
 });
 
-const flaskSockets = [
-    socketIoClient.connect('http://localhost:5001'),
-    socketIoClient.connect('http://localhost:5002'),
-    socketIoClient.connect('http://localhost:5003')
-];
+
 
 // Contador para realizar un seguimiento del número de diferencias de tiempo recibidas desde los nodos
 let receivedTimeDifferenceCount = 0;
@@ -39,6 +35,8 @@ const flaskSockets = [
     socketIoClient.connect('http://localhost:5002'),
     socketIoClient.connect('http://localhost:5003')
 ];
+
+const nodes = ['http://localhost:5001', 'http://localhost:5002', 'http://localhost:5003'];
 
 function getCurrentTime() {
     return new Date().toLocaleTimeString(); 
