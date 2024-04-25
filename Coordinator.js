@@ -32,6 +32,7 @@ const timeDifferences = [];
 
 // Mapa para guardar la relación entre nodo y socket ID
 const nodeSocketMap = new Map();
+let portCounter = 5005
 
 const flaskSockets = [
     socketIoClient.connect('http://localhost:5001'),
@@ -253,6 +254,23 @@ app.post('/start-berkeley', (req, res) => {
     res.send('Algoritmo de Berkeley iniciado correctamente.');
 });
 
+
+// nuevo cliente
+
+// Función para incrementar el contador de puerto y agregar una nueva URL a las listas
+function addNewNode() {
+    const newNodeUrl = `http://localhost:${portCounter}`;
+    flaskSockets.push(socketIoClient.connect(newNodeUrl));
+    nodes.push(newNodeUrl);
+    portCounter++; // Incrementar el contador de puerto
+    console.log(`Nueva URL agregada: ${newNodeUrl}`);
+}
+
+// Endpoint para agregar un nuevo nodo
+app.post('/new-node', (req, res) => {
+    addNewNode();
+    res.send('Nuevo nodo agregado correctamente.');
+});
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
