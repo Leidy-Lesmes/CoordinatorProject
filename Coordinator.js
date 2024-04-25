@@ -24,6 +24,9 @@ let coordinatorTime;
 // Contador para realizar un seguimiento del número de diferencias de tiempo recibidas desde los nodos
 let receivedTimeDifferenceCount = 0;
 
+let nodeTimeDifferences = []; // Declárala aquí junto con las otras variables globales
+
+
 // Lista para almacenar las diferencias de tiempo recibidas del nodo Flask
 const timeDifferences = [];
 
@@ -218,23 +221,32 @@ function calculateNodeTimeDifferences(averageDifference) {
             console.log('No se encontró el socket para el nodo ${nodeUrl}.');
         }
     });
+
+    setTimeout(clearValues, 10000);
+}
+
+function clearValues() {
+    // Restablecer los valores a su estado inicial
+    receivedTimeDifferenceCount = 0;
+    timeDifferences.length = 0;
+    nodeTimeDifferences.length = 0;
+
+    console.log('Valores limpiados después de 10 segundos.');
 }
 
 // Función para actualizar la hora actual del coordinador sumando el promedio de las diferencias de tiempo en segundos
 function updateCoordinatorTime(averageDifference) {
-    // Obtener la hora actual del coordinador
-    const currentCoordinatorTime = new Date();
-
+    console.log("----------------------" + coordinatorTime)
     // Convertir el promedio de las diferencias de tiempo a milisegundos y sumarlo a la hora actual del coordinador
-    const newTime = currentCoordinatorTime.getTime() + (averageDifference * 1000); // Convertir segundos a milisegundos
+    const newTime = coordinatorTime.getTime() + (averageDifference * 1000); // Convertir segundos a milisegundos
 
+    console.log(averageDifference * 1000 + "------------> milisegundos a sumar")
     // Establecer la nueva hora del coordinador
-    currentCoordinatorTime.setTime(newTime);
+    coordinatorTime.setTime(newTime);
 
-    console.log('Hora actualizada del coordinador:', currentCoordinatorTime.toLocaleString());
-    // Calcular la diferencia de tiempo de cada nodo respecto al promedio
-    calculateNodeTimeDifferences(averageDifference);
+    console.log('Hora actualizada del coordinador:', coordinatorTime.toLocaleString());
 }
+
 
 app.post('/start-berkeley', (req, res) => {
     sendSystemTimeToNodes();
