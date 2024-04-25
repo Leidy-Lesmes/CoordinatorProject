@@ -67,7 +67,6 @@ io.on('connection', (socket) => {
     });
 });
 
-
 function pingNode(nodeUrl) {
     const socket = socketIoClient.connect(nodeUrl);
 
@@ -131,13 +130,22 @@ startCoordinatorClock();
 // Función para enviar la hora del coordinador a los nodos Flask
 function sendSystemTimeToNodes() {
     const systemTime = getCoordinatorTime();
+
     io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Algoritmo de Berkeley iniciado...`);
+    io.emit('log_message', `[${systemTime}] Algoritmo de Berkeley iniciado...`);
+
     console.log(`[${systemTime}] Enviando hora del sistema a los nodos Flask.`);
     io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Enviando hora del sistema a los nodos Flask.`);
-
+    
     flaskSockets.forEach((flaskSocket, index) => {
         flaskSocket.emit('coordinator_time', systemTime);
+
+        const nodeNumber = index + 1;
+        
         console.log(`[${systemTime}] Hora del sistema enviada al nodo ${index + 1}: ${systemTime}`);
+        
+        flaskSocket.emit('log_message', `[${systemTime}] Hora del sistema enviada al nodo ${nodeNumber}: ${systemTime}`); 
+        
         io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Hora del sistema enviada al nodo ${index + 1}: ${systemTime}`);
     });
 }
