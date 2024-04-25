@@ -205,9 +205,9 @@ function calculateNodeTimeDifferences(averageDifference) {
     });
     console.log('Diferencias de tiempo de cada nodo respecto al promedio:', nodeTimeDifferences);
     // Emitir las diferencias de tiempo de cada nodo respecto al promedio a los nodos correspondientes
-    nodeTimeDifferences.forEach((nodeDifference) => {
-        const nodeUrl = nodeDifference.node_url;
-        const difference = nodeDifference.difference;
+    nodeTimeDifferences.forEach((nodeDifferences) => {
+        const nodeUrl = nodeDifferences.node_url;
+        const difference = nodeDifferences.difference;
         // Buscar el socket del nodo en la lista de sockets de Flask
         const flaskSocket = flaskSockets.find((socket) => socket.io.uri === nodeUrl);
         if (flaskSocket) {
@@ -219,7 +219,6 @@ function calculateNodeTimeDifferences(averageDifference) {
         }
     });
 }
-
 
 // Función para actualizar la hora actual del coordinador sumando el promedio de las diferencias de tiempo en segundos
 function updateCoordinatorTime(averageDifference) {
