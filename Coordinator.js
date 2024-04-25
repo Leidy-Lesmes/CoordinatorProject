@@ -18,10 +18,11 @@ const io = require('socket.io')(server, {
     }
 });
 
+// Variable para almacenar el tiempo del coordinador
+let coordinatorTime;
 
 // Contador para realizar un seguimiento del número de diferencias de tiempo recibidas desde los nodos
 let receivedTimeDifferenceCount = 0;
-
 
 // Lista para almacenar las diferencias de tiempo recibidas del nodo Flask
 const timeDifferences = [];
@@ -30,15 +31,15 @@ const timeDifferences = [];
 const nodeSocketMap = new Map();
 
 const flaskSockets = [
-    socketIoClient.connect('http://192.168.1.15:5001'),
-    socketIoClient.connect('http://192.168.1.15:5002'),
-    socketIoClient.connect('http://192.168.1.15:5003')
+    socketIoClient.connect('http://localhost:5001'),
+    socketIoClient.connect('http://localhost:5002'),
+    socketIoClient.connect('http://localhost:5003')
 ];
 
-const nodes = ['http://192.168.1.15:5001', 'http://192.168.1.15:5002', 'http://192.168.1.15:5003'];
+const nodes = ['http://localhost:5001', 'http://localhost:5002', 'http://localhost:5003'];
 
 function getCurrentTime() {
-    return new Date().toLocaleTimeString(); 
+    return new Date().toLocaleTimeString();
 }
 
 io.on('connection', (socket) => {
@@ -47,28 +48,34 @@ io.on('connection', (socket) => {
     console.log(`[${getCurrentTime()}] Nuevo cliente conectado desde: ${origin}`);
 
     nodeSocketMap.set(origin, socket.id);
-    socket.emit('log_message', `[${getCurrentTime()}] Conexión exitosa de ${origin} al server ws.`);
+
+    socket.on('join_vue_clients', () => {
+        socket.join('vue-clients');
+        io.to('vue-clients').emit('system_log', `[${getCurrentTime()}] Client from Vue connected. ${origin}`);
+    });
+
+    socket.emit('log_message', `[${getCurrentTime()}] Connected successful from ${origin} to coordinator server.`);
+    io.to('vue-clients').emit('system_log', `[${getCurrentTime()}] Connected successful from ${origin} to coordinator server.`);
 
     socket.on('disconnect', () => {
-        console.log(`[${getCurrentTime()}] Cliente ${origin} desconectado.`);
-
-        socket.emit('log_message', `[${getCurrentTime()}] Cliente ${origin} desconectado.`);
-
+        console.log(`[${getCurrentTime()}] Client ${origin} disconnected.`);
+        io.to('vue-clients').emit('system_log', `[${getCurrentTime()}] Client ${origin} disconnected.`);
         nodeSocketMap.delete(origin);
     });
 });
+
 
 function pingNode(nodeUrl) {
     const socket = socketIoClient.connect(nodeUrl);
 
     socket.on('connect', () => {
-        console.log(`[${getCurrentTime()}] Ping a ${nodeUrl}: Conectado`);
-        // Emitir el estado de conexión al frontend (servidor Vue.js)
+        console.log(`[${getCurrentTime()}] Ping a ${nodeUrl}: Functional network level connection`);
         io.emit('node_status', {
-            timestamp: getCurrentTime(), 
+            timestamp: getCurrentTime(),
             ip: nodeUrl,
             isActive: true,
         });
+        io.to('vue-clients').emit('system_log', `[${getCurrentTime()}] Ping a ${nodeUrl}: Functional network level connection`);
     });
 
     socket.on('connect_error', (error) => {
@@ -78,6 +85,7 @@ function pingNode(nodeUrl) {
             ip: nodeUrl,
             isActive: false,
         });
+        io.to('vue-clients').emit('system_log', `[${getCurrentTime()}] Ping a ${nodeUrl}: Error de conexión - ${error.message}`);
     });
 }
 
@@ -85,30 +93,51 @@ nodes.forEach((nodeUrl) => {
     pingNode(nodeUrl);
     setInterval(() => {
         pingNode(nodeUrl);
-    }, 5000);
+    }, 10000);
 });
 
 // implementación berkeley
 
-function getCurrentTimeHour() {
+function startCoordinatorClock() {
+    // Inicializar con la hora actual del sistema
     const now = new Date();
-    const hours = now.getHours().toString().padStart(2, '0'); // Asegura que siempre haya dos dígitos para las horas
-    const minutes = now.getMinutes().toString().padStart(2, '0'); // Asegura que siempre haya dos dígitos para los minutos
-    const seconds = now.getSeconds().toString().padStart(2, '0'); // Asegura que siempre haya dos dígitos para los segundos
+    coordinatorTime = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds()
+    );
+    setInterval(() => {
+        coordinatorTime.setSeconds(coordinatorTime.getSeconds() + 1);
+    }, 1000); 
+    console.log('coordinator time: ', coordinatorTime);
+}
+
+// Función para obtener la hora del coordinador
+function getCoordinatorTime() {
+    const hours = coordinatorTime.getHours().toString().padStart(2, '0');
+    const minutes = coordinatorTime.getMinutes().toString().padStart(2, '0');
+    const seconds = coordinatorTime.getSeconds().toString().padStart(2, '0');
     return `${hours}:${minutes}:${seconds}`;
 }
 
-// Función para enviar la hora del sistema a los nodos Flask
+startCoordinatorClock();
+
+// Función para enviar la hora del coordinador a los nodos Flask
 function sendSystemTimeToNodes() {
-    const systemTime = getCurrentTimeHour();
-    console.log(`[${getCurrentTimeHour()}] Enviando hora del sistema a los nodos Flask.`);
+    const systemTime = getCoordinatorTime();
+    io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Algoritmo de Berkeley iniciado...`);
+    console.log(`[${systemTime}] Enviando hora del sistema a los nodos Flask.`);
+    io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Enviando hora del sistema a los nodos Flask.`);
+
     flaskSockets.forEach((flaskSocket, index) => {
         flaskSocket.emit('coordinator_time', systemTime);
-        console.log(`[${getCurrentTimeHour()}] Hora del sistema enviada al nodo ${index + 1}: ${systemTime}`);
+        console.log(`[${systemTime}] Hora del sistema enviada al nodo ${index + 1}: ${systemTime}`);
+        io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Hora del sistema enviada al nodo ${index + 1}: ${systemTime}`);
     });
 }
-
-// Escuchar la diferencia de tiempo enviada desde los nodos Flask
 
 // Escuchar la diferencia de tiempo enviada desde los nodos Flask
 flaskSockets.forEach((flaskSocket, index) => {
@@ -116,11 +145,11 @@ flaskSockets.forEach((flaskSocket, index) => {
         const differenceSeconds = data.difference;
         const nodeUrl = data.node_url; // Obtener la URL del nodo Flask
         console.log(`Diferencia de tiempo recibida desde Flask ${index + 1} (${nodeUrl}): ${differenceSeconds} segundos`);
-        
+
         // Almacenar la diferencia de tiempo y la URL del nodo Flask en la lista
         timeDifferences.push({ difference: differenceSeconds, node_url: nodeUrl });
         console.log('Lista de diferencias de tiempo:', timeDifferences);
-        
+
         // Incrementar el contador de diferencias de tiempo recibidas
         receivedTimeDifferenceCount++;
 
@@ -196,13 +225,13 @@ function calculateNodeTimeDifferences(averageDifference) {
 function updateCoordinatorTime(averageDifference) {
     // Obtener la hora actual del coordinador
     const currentCoordinatorTime = new Date();
-    
+
     // Convertir el promedio de las diferencias de tiempo a milisegundos y sumarlo a la hora actual del coordinador
     const newTime = currentCoordinatorTime.getTime() + (averageDifference * 1000); // Convertir segundos a milisegundos
-    
+
     // Establecer la nueva hora del coordinador
     currentCoordinatorTime.setTime(newTime);
-    
+
     console.log('Hora actualizada del coordinador:', currentCoordinatorTime.toLocaleString());
     // Calcular la diferencia de tiempo de cada nodo respecto al promedio
     calculateNodeTimeDifferences(averageDifference);
