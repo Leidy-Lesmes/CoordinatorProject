@@ -30,12 +30,12 @@ const timeDifferences = [];
 const nodeSocketMap = new Map();
 
 const flaskSockets = [
-    socketIoClient.connect('http://192.168.1.15:5001'),
-    socketIoClient.connect('http://192.168.1.15:5002'),
-    socketIoClient.connect('http://192.168.1.15:5003')
+    socketIoClient.connect('http://localhost:5001'),
+    socketIoClient.connect('http://localhost:5002'),
+    socketIoClient.connect('http://localhost:5003')
 ];
 
-const nodes = ['http://192.168.1.15:5001', 'http://192.168.1.15:5002', 'http://192.168.1.15:5003'];
+const nodes = ['http://localhost:5001', 'http://localhost:5002', 'http://localhost:5003'];
 
 function getCurrentTime() {
     return new Date().toLocaleTimeString(); 
@@ -176,9 +176,9 @@ function calculateNodeTimeDifferences(averageDifference) {
     });
     console.log('Diferencias de tiempo de cada nodo respecto al promedio:', nodeTimeDifferences);
     // Emitir las diferencias de tiempo de cada nodo respecto al promedio a los nodos correspondientes
-    nodeTimeDifferences.forEach((nodeDifference) => {
-        const nodeUrl = nodeDifference.node_url;
-        const difference = nodeDifference.difference;
+    nodeTimeDifferences.forEach((nodeDifferences) => {
+        const nodeUrl = nodeDifferences.node_url;
+        const difference = nodeDifferences.difference;
         // Buscar el socket del nodo en la lista de sockets de Flask
         const flaskSocket = flaskSockets.find((socket) => socket.io.uri === nodeUrl);
         if (flaskSocket) {
@@ -190,7 +190,6 @@ function calculateNodeTimeDifferences(averageDifference) {
         }
     });
 }
-
 
 // Función para actualizar la hora actual del coordinador sumando el promedio de las diferencias de tiempo en segundos
 function updateCoordinatorTime(averageDifference) {
