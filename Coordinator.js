@@ -20,25 +20,13 @@ const io = require('socket.io')(server, {
 
 // Variable para almacenar el tiempo del coordinador
 let coordinatorTime;
-
 // Contador para realizar un seguimiento del número de diferencias de tiempo recibidas desde los nodos
 let receivedTimeDifferenceCount = 0;
-
-let nodeTimeDifferences = []; // Declárala aquí junto con las otras variables globales
-
-
-// Lista para almacenar las diferencias de tiempo recibidas del nodo Flask
-const timeDifferences = [];
-
+let nodeTimeDifferences = [];
 // Mapa para guardar la relación entre nodo y socket ID
 const nodeSocketMap = new Map();
-let portCounter = 5005
-
-const flaskSockets = [
-    socketIoClient.connect('http://localhost:5001'),
-    socketIoClient.connect('http://localhost:5002'),
-    socketIoClient.connect('http://localhost:5003')
-];
+// Objeto para almacenar las diferencias de tiempo recibidas de cada nodo activo
+const nodeTimeDifferencesMap = new Map();
 
 const nodes = ['http://localhost:5001', 'http://localhost:5002', 'http://localhost:5003'];
 
@@ -47,7 +35,7 @@ function getCurrentTime() {
 }
 
 io.on('connection', (socket) => {
-    const origin = socket.handshake.headers.origin;
+    const origin = socket.handshake.query.clientUrl;
 
     console.log(`[${getCurrentTime()}] Nuevo cliente conectado desde: ${origin}`);
 
@@ -99,7 +87,7 @@ nodes.forEach((nodeUrl) => {
     }, 10000);
 });
 
-// implementación berkeley
+// Implementación de Berkeley
 
 function startCoordinatorClock() {
     // Inicializar con la hora actual del sistema
@@ -130,154 +118,87 @@ startCoordinatorClock();
 
 // Función para enviar la hora del coordinador a los nodos Flask
 function sendSystemTimeToNodes() {
-    const systemTime = getCoordinatorTime();
-
+    const systemTime = getCurrentTime();
     io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Algoritmo de Berkeley iniciado...`);
-    io.emit('log_message', `[${systemTime}] Algoritmo de Berkeley iniciado...`);
+    console.log(`[${systemTime}] Enviando hora del sistema a los nodos NODE.`);
+    io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Enviando hora del sistema a los nodos NODE.`);
 
-    console.log(`[${systemTime}] Enviando hora del coordinador a los nodos Flask.`);
-    io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Enviando hora del coordinador a los nodos Flask.`);
-    
-    flaskSockets.forEach((flaskSocket, index) => {
-        flaskSocket.emit('coordinator_time', systemTime);
-
-        const nodeNumber = index + 1;
-        
-        console.log(`[${systemTime}] Hora del sistema coordinador enviada al nodo ${index + 1}: ${systemTime}`);
-        
-        io.to(nodeSocketMap.get(nodes[index])).emit('log_message', `[${systemTime}] Hora del sistema coordinador enviada al nodo ${nodeNumber}: ${systemTime}`);
-
-        io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Hora del sistema coordinador enviada al nodo ${index + 1}: ${systemTime}`);
+    nodeSocketMap.forEach((socketId, nodeUrl) => {
+        io.to(socketId).emit('coordinator_time', systemTime);
+        console.log(`[${systemTime}] Hora del sistema [${systemTime}] enviada al nodo: ${nodeUrl}`);
+        io.to('vue-clients').emit('algoritm_log', `[${systemTime}] Hora del sistema [${systemTime}] enviada al nodo: ${nodeUrl}`);
     });
 }
 
-// Escuchar la diferencia de tiempo enviada desde los nodos Flask
-flaskSockets.forEach((flaskSocket, index) => {
-    flaskSocket.on('time_difference', (data) => {
-        const differenceSeconds = data.difference;
-        const nodeUrl = data.node_url; // Obtener la URL del nodo Flask
-        console.log(`Diferencia de tiempo recibida desde Flask ${index + 1} (${nodeUrl}): ${differenceSeconds} segundos`);
-
-        // Almacenar la diferencia de tiempo y la URL del nodo Flask en la lista
-        timeDifferences.push({ difference: differenceSeconds, node_url: nodeUrl });
-        console.log('Lista de diferencias de tiempo:', timeDifferences);
-
-        // Incrementar el contador de diferencias de tiempo recibidas
-        receivedTimeDifferenceCount++;
-
-        // Verificar si se han recibido todas las diferencias de tiempo esperadas
-        if (receivedTimeDifferenceCount === flaskSockets.length) {
-            // Calcular el promedio de las diferencias de tiempo
-            const averageDifference = calculateAverageTimeDifference();
-            // Actualizar la hora actual del coordinador con el promedio de las diferencias de tiempo
-            updateCoordinatorTime(averageDifference);
-            // Calcular la diferencia de tiempo de cada nodo respecto al promedio
-            calculateNodeTimeDifferences(averageDifference);
-
-            // Reiniciar el contador de diferencias de tiempo recibidas
-            receivedTimeDifferenceCount = 0;
-        }
+// Escuchar la diferencia de tiempo enviada desde los nodos
+io.on('connection', (socket) => {
+    socket.on('time_difference', (data) => {
+        const { differenceInSeconds, nodeUrl } = data;
+        handleTimeDifferenceReceived(differenceInSeconds, nodeUrl);
     });
 });
 
-// Función para calcular el promedio de las diferencias de tiempo
-function calculateAverageTimeDifference() {
-    // Verificar si hay diferencias de tiempo en la lista
-    if (timeDifferences.length === 0) {
-        console.log('No hay diferencias de tiempo para calcular el promedio.');
-        return;
+// Función para manejar la recepción de una diferencia de tiempo de un nodo
+function handleTimeDifferenceReceived(differenceInSeconds, nodeUrl) {
+    // Almacenar la diferencia de tiempo y la URL del nodo en el mapa
+    nodeTimeDifferencesMap.set(nodeUrl, differenceInSeconds);
+
+     // Imprimir las diferencias recibidas de cada nodo
+     console.log(`Diferencia de tiempo recibida del nodo ${nodeUrl}: ${differenceInSeconds}`);
+    // Verificar si se han recibido respuestas de todos los nodos activos
+    if (nodeTimeDifferencesMap.size >= 1) { // Cambia 1 al número mínimo de nodos activos que deseas
+        // Calcular el promedio de las diferencias de tiempo
+        const averageDifference = calculateAverageTimeDifference();
+        console.log('Promedio de diferencias de tiempo:', averageDifference);
+        // Actualizar la hora actual del coordinador con el promedio de las diferencias de tiempo
+        updateCoordinatorTime(averageDifference);
+        // Calcular la diferencia de tiempo de cada nodo respecto al promedio
+        calculateNodeTimeDifferences(averageDifference);
     }
+}
 
-    // Sumar todas las diferencias de tiempo
-    const totalDifferenceSeconds = timeDifferences.reduce((total, difference) => total + difference.difference, 0);
-
-    // Calcular el promedio dividiendo la suma total por el número de diferencias + 1
-    const averageDifference = totalDifferenceSeconds / (timeDifferences.length + 1);
-
-    console.log('Promedio de diferencias de tiempo:', averageDifference);
-
-    // Guardar el promedio en una variable si es necesario
-    return averageDifference;
+// Función para calcular el promedio de las diferencias de tiempo recibidas hasta el momento
+function calculateAverageTimeDifference() {
+    const totalDifferenceSeconds = Array.from(nodeTimeDifferencesMap.values()).reduce((total, difference) => total + difference, 0);
+    return totalDifferenceSeconds / nodeTimeDifferencesMap.size;
 }
 
 // Función para calcular la diferencia de tiempo de cada nodo respecto al promedio y enviarla al nodo correspondiente
 function calculateNodeTimeDifferences(averageDifference) {
-    // Verificar si hay diferencias de tiempo en la lista
-    if (timeDifferences.length === 0) {
-        console.log('No hay diferencias de tiempo para calcular las diferencias de nodos.');
-        return;
-    }
-    // Crear una lista para almacenar las diferencias de cada nodo respecto al promedio
     const nodeTimeDifferences = [];
-    // Iterar sobre cada diferencia de tiempo y calcular la diferencia respecto al promedio
-    timeDifferences.forEach((difference) => {
-        const nodeDifference = averageDifference - difference.difference;
-        const nodeUrl = difference.node_url;
+    nodeTimeDifferencesMap.forEach((difference, nodeUrl) => {
+        const nodeDifference = averageDifference - difference;
         nodeTimeDifferences.push({ difference: nodeDifference, node_url: nodeUrl });
     });
     console.log('Diferencias de tiempo de cada nodo respecto al promedio:', nodeTimeDifferences);
+
     // Emitir las diferencias de tiempo de cada nodo respecto al promedio a los nodos correspondientes
     nodeTimeDifferences.forEach((nodeDifferences) => {
         const nodeUrl = nodeDifferences.node_url;
         const difference = nodeDifferences.difference;
-        // Buscar el socket del nodo en la lista de sockets de Flask
-        const flaskSocket = flaskSockets.find((socket) => socket.io.uri === nodeUrl);
-        if (flaskSocket) {
-            // Enviar la diferencia de tiempo calculada respecto al promedio
-            flaskSocket.emit('node_time_difference', { difference: difference });
-            console.log('Diferencia de tiempo enviada al nodo ${nodeUrl}: ${difference}');
+        const nodeSocket = io.sockets.sockets.get(nodeSocketMap.get(nodeUrl));
+        if (nodeSocket) {
+            nodeSocket.emit('node_time_difference', { difference: difference });
+            console.log(`Diferencia de tiempo enviada al nodo ${nodeUrl}: ${difference}`);
         } else {
-            console.log('No se encontró el socket para el nodo ${nodeUrl}.');
+            console.log(`No se encontró el socket para el nodo ${nodeUrl}.`);
         }
     });
 
-    setTimeout(clearValues, 10000);
-}
-
-function clearValues() {
-    // Restablecer los valores a su estado inicial
-    receivedTimeDifferenceCount = 0;
-    timeDifferences.length = 0;
-    nodeTimeDifferences.length = 0;
-
-    console.log('Valores limpiados después de 10 segundos.');
+    // Limpiar el mapa después de enviar las diferencias de tiempo
+    nodeTimeDifferencesMap.clear();
 }
 
 // Función para actualizar la hora actual del coordinador sumando el promedio de las diferencias de tiempo en segundos
 function updateCoordinatorTime(averageDifference) {
-    console.log("----------------------" + coordinatorTime)
-    // Convertir el promedio de las diferencias de tiempo a milisegundos y sumarlo a la hora actual del coordinador
-    const newTime = coordinatorTime.getTime() + (averageDifference * 1000); // Convertir segundos a milisegundos
-
-    console.log(averageDifference * 1000 + "------------> milisegundos a sumar")
-    // Establecer la nueva hora del coordinador
+    const newTime = coordinatorTime.getTime() + (averageDifference * 1000);
     coordinatorTime.setTime(newTime);
-
     console.log('Hora actualizada del coordinador:', coordinatorTime.toLocaleString());
 }
-
 
 app.post('/start-berkeley', (req, res) => {
     sendSystemTimeToNodes();
     res.send('Algoritmo de Berkeley iniciado correctamente.');
-});
-
-
-// nuevo cliente
-
-// Función para incrementar el contador de puerto y agregar una nueva URL a las listas
-function addNewNode() {
-    const newNodeUrl = `http://localhost:${portCounter}`;
-    flaskSockets.push(socketIoClient.connect(newNodeUrl));
-    nodes.push(newNodeUrl);
-    portCounter++; // Incrementar el contador de puerto
-    console.log(`Nueva URL agregada: ${newNodeUrl}`);
-}
-
-// Endpoint para agregar un nuevo nodo
-app.post('/new-node', (req, res) => {
-    addNewNode();
-    res.send('Nuevo nodo agregado correctamente.');
 });
 
 const PORT = process.env.PORT || 3000;
