@@ -3,6 +3,8 @@ const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
 const socketIoClient = require('socket.io-client');
+const { exec } = require('child_process');
+
 
 const app = express();
 const server = http.createServer(app);
@@ -28,7 +30,7 @@ const nodeSocketMap = new Map();
 // Objeto para almacenar las diferencias de tiempo recibidas de cada nodo activo
 const nodeTimeDifferencesMap = new Map();
 
-const nodes = ['http://localhost:5001', 'http://localhost:5002', 'http://localhost:5003'];
+const nodes = ['http://10.4.72.200:5001', 'http://10.4.72.200:5002', 'http://10.4.72.200:5003', 'http://10.4.72.200:5010'];
 
 function getCurrentTime() {
     return new Date().toLocaleTimeString();
@@ -138,15 +140,17 @@ io.on('connection', (socket) => {
     });
 });
 
+// Contador para realizar un seguimiento del número de respuestas recibidas de los nodos
+
+
 // Función para manejar la recepción de una diferencia de tiempo de un nodo
 function handleTimeDifferenceReceived(differenceInSeconds, nodeUrl) {
     // Almacenar la diferencia de tiempo y la URL del nodo en el mapa
     nodeTimeDifferencesMap.set(nodeUrl, differenceInSeconds);
+    receivedTimeDifferenceCount++;
 
-     // Imprimir las diferencias recibidas de cada nodo
-     console.log(`Diferencia de tiempo recibida del nodo ${nodeUrl}: ${differenceInSeconds}`);
     // Verificar si se han recibido respuestas de todos los nodos activos
-    if (nodeTimeDifferencesMap.size >= 1) { // Cambia 1 al número mínimo de nodos activos que deseas
+    if (receivedTimeDifferenceCount >= nodes.length) {
         // Calcular el promedio de las diferencias de tiempo
         const averageDifference = calculateAverageTimeDifference();
         console.log('Promedio de diferencias de tiempo:', averageDifference);
@@ -154,8 +158,11 @@ function handleTimeDifferenceReceived(differenceInSeconds, nodeUrl) {
         updateCoordinatorTime(averageDifference);
         // Calcular la diferencia de tiempo de cada nodo respecto al promedio
         calculateNodeTimeDifferences(averageDifference);
+        // Reiniciar el contador para el próximo ciclo de cálculo
+        receivedTimeDifferenceCount = 0;
     }
 }
+
 
 // Función para calcular el promedio de las diferencias de tiempo recibidas hasta el momento
 function calculateAverageTimeDifference() {
@@ -200,6 +207,22 @@ app.post('/start-berkeley', (req, res) => {
     sendSystemTimeToNodes();
     res.send('Algoritmo de Berkeley iniciado correctamente.');
 });
+
+app.get('/run-script', (req, res) => {
+    exec('createserver.bat', (error, stdout, stderr) => {
+      if (error) {
+        console.error(`Error al ejecutar el script: ${error.message}`);
+        return res.status(500).send('Error al ejecutar el script');
+      }
+      if (stderr) {
+        console.error(`Error en el script: ${stderr}`);
+        return res.status(500).send('Error en el script');
+      }
+      console.log(`Script ejecutado exitosamente: ${stdout}`);
+      res.send('Script ejecutado exitosamente');
+    });
+  });
+  
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
